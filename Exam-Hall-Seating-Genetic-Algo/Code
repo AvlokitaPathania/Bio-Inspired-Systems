@@ -1,0 +1,192 @@
+import random
+
+
+def dynamic_exam_seating():
+  print("=== EXAM SEATING CONFIGURATION ===")
+
+  try:
+    rows = int(input("Enter number of rows in the hall: "))
+    cols = int(input("Enter number of columns in the hall: "))
+  except ValueError:
+    print("Invalid input! Please enter integer values.")
+    return
+
+  total_seats = rows * cols
+  print(f"Total capacity of the hall: {total_seats} seats\n")
+
+  try:
+    num_subjects = int(input("How many different subjects/departments? "))
+  except ValueError:
+    print("Invalid input! Please enter an integer.")
+    return
+
+  actual_students = []
+  for i in range(num_subjects):
+    dept_name = input(
+        f"Enter code name for Subject {i+1} (e.g., CS, MATH, BIO): "
+    ).upper()
+    try:
+      count = int(input(f"Enter number of students for {dept_name}: "))
+    except ValueError:
+      print("Invalid count! Skipping this subject.")
+      continue
+    for s_idx in range(1, count + 1):
+      actual_students.append({"id": f"{dept_name}{s_idx:02d}", "dept": dept_name})
+
+  total_students_count = len(actual_students)
+  empty_desks_needed = total_seats - total_students_count
+
+  # 3. Capacity Check
+  if empty_desks_needed < 0:
+    print(
+        f"\n[ERROR] Over-capacity! You have {total_students_count} students,"
+        f" but the hall only has {total_seats} seats."
+    )
+    print("Please restart and increase rows/columns or decrease student counts.")
+    return
+
+  # Combine students with empty desk cushions
+  seating_pool = actual_students + [
+      {"id": "----", "dept": "EMPTY"} for _ in range(empty_desks_needed)
+  ]
+
+  # Genetic Algorithm Hyperparameters
+  population_size = 50
+  gn_max = 500
+  mutation_rate = 0.15
+  elite_count = 6
+
+  # --- Internal GA Functions Closure ---
+  def create_initial_population():
+    population = []
+    for _ in range(population_size):
+      chromosome = list(seating_pool)
+      random.shuffle(chromosome)
+      population.append(chromosome)
+    return population
+
+  def calculate_fitness(chromosome):
+    conflicts = 0
+    grid = [chromosome[i : i + cols] for i in range(0, total_seats, cols)]
+
+    for r in range(rows):
+      for c in range(cols):
+        current_dept = grid[r][c]["dept"]
+        if current_dept == "EMPTY":
+          continue
+
+        # 1. Horizontal
+        if c + 1 < cols and grid[r][c + 1]["dept"] == current_dept:
+          conflicts += 1
+        # 2. Vertical
+        if r + 1 < rows and grid[r + 1][c]["dept"] == current_dept:
+          conflicts += 1
+        # 3. Diagonal Down-Right
+        if (
+            r + 1 < rows
+            and c + 1 < cols
+            and grid[r + 1][c + 1]["dept"] == current_dept
+        ):
+          conflicts += 1
+        # 4. Diagonal Down-Left
+        if (
+            r + 1 < rows
+            and c - 1 >= 0
+            and grid[r + 1][c - 1]["dept"] == current_dept
+        ):
+          conflicts += 1
+
+    return 1.0 / (1.0 + conflicts)
+
+  def crossover_with_repair(parent1, parent2):
+    size = len(parent1)
+    start, end = sorted(random.sample(range(size), 2))
+    child = [None] * size
+    child[start : end + 1] = parent1[start : end + 1]
+
+    p2_pointer = 0
+    for i in range(size):
+      if child[i] is None:
+        while True:
+          candidate = parent2[p2_pointer]
+          if child.count(candidate) < parent1.count(candidate):
+            child[i] = candidate
+            break
+          p2_pointer += 1
+    return child
+
+  def permutation_mutation(chromosome):
+    if random.random() < mutation_rate:
+      idx1, idx2 = random.sample(range(len(chromosome)), 2)
+      chromosome[idx1], chromosome[idx2] = (
+          chromosome[idx2],
+          chromosome[idx1],
+      )
+    return chromosome
+
+  # --- Run Optimization Engine ---
+  print("\nOptimizing seating arrangements... Please wait...")
+  population = create_initial_population()
+  gn_i = 0
+
+  while gn_i < gn_max:
+    fitness_scores = [calculate_fitness(chrom) for chrom in population]
+    if max(fitness_scores) == 1.0:
+      break
+
+    # Roulette selection
+    total_f = sum(fitness_scores)
+    weights = (
+        [1.0 / population_size] * population_size
+        if total_f == 0
+        else [f / total_f for f in fitness_scores]
+    )
+    intermediate_pop = random.choices(population, weights=weights, k=population_size)
+    intermediate_pop = [list(ind) for ind in intermediate_pop]
+
+    processed_intermediate = []
+    for i in range(0, population_size, 2):
+      p1 = intermediate_pop[i]
+      p2 = intermediate_pop[i + 1] if i + 1 < population_size else p1
+      c1 = permutation_mutation(crossover_with_repair(p1, p2))
+      c2 = permutation_mutation(crossover_with_repair(p2, p1))
+      processed_intermediate.extend([c1, c2])
+
+    inter_fitness = [
+        calculate_fitness(chrom) for chrom in processed_intermediate
+    ]
+    pop_indexed = sorted(enumerate(fitness_scores), key=lambda x: x[1])
+    inter_indexed = sorted(
+        enumerate(inter_fitness), key=lambda x: x[1], reverse=True
+    )
+
+    for idx in range(elite_count):
+      worst_pop_index = pop_indexed[idx][0]
+      best_inter_index = inter_indexed[idx][0]
+      population[worst_pop_index] = processed_intermediate[best_inter_index]
+
+    gn_i += 1
+
+  final_fitness = [calculate_fitness(chrom) for chrom in population]
+  best_index = final_fitness.index(max(final_fitness))
+  best_arrangement = population[best_index]
+  final_conflicts = int((1.0 / final_fitness[best_index]) - 1)
+
+  print("\n==========================================")
+  print(f"Optimization finished at generation: {gn_i}")
+  print(f"Remaining neighboring conflicts: {final_conflicts}")
+  print(f"Real students seated: {total_students_count} | Empty spaces: {empty_desks_needed}")
+  print("==========================================\n")
+
+  col_width = max(len(s["id"]) for s in seating_pool) + 2
+  border = "-" * (cols * (col_width + 3) + 1)
+
+  print(border)
+  for r in range(rows):
+    row_cells = best_arrangement[r * cols : (r + 1) * cols]
+    row_str = " | ".join(f"{s['id']}".center(col_width) for s in row_cells)
+    print(f"| {row_str} |")
+  print(border)
+
+if __name__ == "__main__":
+  dynamic_exam_seating()

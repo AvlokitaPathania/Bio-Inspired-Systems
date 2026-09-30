@@ -1,0 +1,62 @@
+START ALGORITHM DynamicExamSeating
+
+    // 1. Inputs and Validations
+    TRY
+        INPUT rows, cols
+    CATCH ValueError
+        PRINT "Invalid input"
+        EXIT
+    END TRY
+    
+    SET total_seats = rows * cols
+    PRINT "Total capacity"
+
+    TRY
+        INPUT num_subjects
+    CATCH ValueError
+        PRINT "Invalid input"
+        EXIT
+    END TRY
+
+    // 2. Generate Student and Empty Seats Pool
+    SET actual_students = Empty List
+    FOR EACH subject DO
+        INPUT dept_name, count
+        LOOP count TIMES: APPEND {id, dept_name} TO actual_students
+    END FOR
+
+    IF LENGTH(actual_students) > total_seats THEN EXIT WITH ERROR
+
+    SET seating_pool = actual_students + (Remaining Seats filled with "EMPTY" placeholders)
+    SET GA_Params = {pop_size: 50, gen_max: 500, mutation_rate: 0.15, elite_count: 6}
+
+    // 3. Helper Functions
+    FUNCTION CalculateFitness(layout):
+        RESHAPE layout INTO 2D grid[rows][cols]
+        SET conflicts = Count adjacent matching non-EMPTY departments (Horizontal, Vertical, Diagonal)
+        RETURN 1.0 / (1.0 + conflicts)
+    END FUNCTION
+
+    FUNCTION CrossoverAndMutate(parent1, parent2):
+        SET child = Copy random slice from parent1, fill remainder from parent2 without duplicating IDs
+        IF RANDOM(0,1) < mutation_rate THEN SWAP two random positions in child
+        RETURN child
+    END FUNCTION
+
+    // 4. Optimization Loop
+    SET population = Create 50 randomly shuffled copies of seating_pool
+    
+    LOOP gen_max TIMES OR UNTIL MaxFitness == 1.0:
+        SET parents = Select 50 layouts from population using Roulette Selection (higher fitness = higher chance)
+        SET next_gen = Pair up parents and generate 50 children via CrossoverAndMutate()
+        
+        // Elitism step
+        Replace the 6 worst layouts in population with the 6 best layouts from next_gen
+    END LOOP
+
+    // 5. Output Results
+    SET best_layout = Layout in population with highest fitness
+    PRINT "Remaining Conflicts:", (1.0 / MaxFitness) - 1
+    DISPLAY best_layout as a formatted 2D Grid
+
+END ALGORITHM

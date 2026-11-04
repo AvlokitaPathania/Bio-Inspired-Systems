@@ -1,0 +1,161 @@
+import random
+
+network = {
+    'A': {'B': 4, 'C': 2},
+    'B': {'A': 4, 'C': 1, 'D': 5},
+    'C': {'A': 2, 'B': 1, 'D': 8, 'E': 10},
+    'D': {'B': 5, 'C': 8, 'E': 2, 'F': 6},
+    'E': {'C': 10, 'D': 2, 'F': 3},
+    'F': {'D': 6, 'E': 3}
+}
+
+alpha = 1
+beta = 2
+rho = 0.5
+Q = 100
+ants = 10
+iterations = 20
+
+pheromone = {}
+for i in network:
+    pheromone[i] = {}
+    for j in network[i]:
+        pheromone[i][j] = 1.0
+
+def route_distance(route):
+    distance = 0
+    for i in range(len(route) - 1):
+        distance += network[route[i]][route[i + 1]]
+    return distance
+
+
+# Select next router using Roulette Wheel Selection
+def select_next_city(current, visited, destination):
+
+    probabilities = {}
+    total = 0
+
+    for j in network[current]:
+
+        if j not in visited:
+
+            tau = pheromone[current][j] ** alpha
+            eta = (1 / network[current][j]) ** beta
+
+            probabilities[j] = tau * eta
+            total += probabilities[j]
+
+    if not probabilities or total == 0:
+        return None
+
+    for j in probabilities:
+        probabilities[j] /= total
+
+    r = random.random()
+    cumulative = 0
+
+    for j, p in probabilities.items():
+        cumulative += p
+        if r <= cumulative:
+            return j
+
+    return list(probabilities.keys())[-1]
+
+
+def generate_route(source, destination):
+
+    current = source
+    visited = [source]
+
+    while current != destination:
+
+        next_router = select_next_city(
+            current, visited, destination
+        )
+
+        if next_router is None:
+            return None
+
+        visited.append(next_router)
+        current = next_router
+
+    return visited
+
+def update_pheromones(routes):
+
+    for i in pheromone:
+        for j in pheromone[i]:
+            pheromone[i][j] *= (1 - rho)
+
+    for route in routes:
+
+        if route is None:
+            continue
+
+        distance = route_distance(route)
+        delta = Q / distance
+
+        for i in range(len(route) - 1):
+
+            u = route[i]
+            v = route[i + 1]
+
+            pheromone[u][v] += delta
+            pheromone[v][u] += delta
+
+
+def packet_routing(source, destination):
+
+    best_route = None
+    best_distance = float('inf')
+
+    for iteration in range(iterations):
+
+        routes = []
+
+        for ant in range(ants):
+
+            route = generate_route(source, destination)
+
+            if route is not None:
+
+                distance = route_distance(route)
+                routes.append(route)
+
+                if distance < best_distance:
+                    best_distance = distance
+                    best_route = route
+
+        update_pheromones(routes)
+
+    return best_route, best_distance
+
+print("TELECOMMUNICATION DATA PACKET ROUTING")
+print("-------------------------------------")
+
+run_count = 0
+max_runs = 2  
+
+while run_count < max_runs:
+    print(f"\n=== Route Request #{run_count + 1} ===")
+    source = input("Enter source router (A-F): ").strip().upper()
+    destination = input("Enter destination router (A-F): ").strip().upper()
+
+    if source not in network or destination not in network:
+        print("Invalid router! Please enter letters A to F.")
+        continue
+    elif source == destination:
+        print("Source and destination cannot be the same.")
+        continue
+
+    route, distance = packet_routing(source, destination)
+
+    if route:
+        print("\nOptimal Packet Route:")
+        print(" -> ".join(route))
+        print("Total Network Distance:", distance)
+        print("\nPacket Routing Successful!")
+    else:
+        print("No route available!")
+
+    run_count += 1
